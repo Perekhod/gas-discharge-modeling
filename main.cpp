@@ -1,7 +1,8 @@
-﻿#include <iostream>
+#include <iostream>
 #include <vector>
 #include <random>
 #include <cmath>
+#include <fstream>
 
 // Константы для физических величин
 constexpr double PI = 3.141592653589793;
@@ -17,6 +18,7 @@ private:
     double vx, vy, vz;  // скорости в метрах в секунду
     double q;           // заряд в кулонах
     double m;           // масса в килограммах
+    bool active;        // поле для отслеживания активности частицы
 
 public:
     // Конструктор класса Particle с параметрами для инициализации полей
@@ -29,27 +31,30 @@ public:
         this->vz = vz;
         this->q = q;
         this->m = m;
+        this->active = true;
     }
 
     // Геттеры и сеттеры для доступа к полям класса Particle
-    double getX () { return x; }
-    double getY () { return y; }
-    double getZ () { return z; }
-    double getVx() { return vx; }
-    double getVy() { return vy; }
-    double getVz() { return vz; }
-    double getQ () { return q; }
-    double getM () { return m; }
+    double getX()   { return x; }
+    double getY()   { return y; }
+    double getZ()   { return z; }
+    double getVx()  { return vx;}
+    double getVy()  { return vy;}
+    double getVz()  { return vz;}
+    double getQ()   { return q; }
+    double getM()   { return m; }
+    bool isActive() { return active;}   // геттер для поля active
 
-    void setX   (double x)  { this->x = x;  }
-    void setY   (double y)  { this->y = y;  }
-    void setZ   (double z)  { this->z = z;  }
-    void setVx  (double vx) { this->vx = vx;}
-    void setVy  (double vy) { this->vy = vy;}
-    void setVz  (double vz) { this->vz = vz;}
-    void setQ   (double q)  { this->q = q;  }
-    void setM   (double m)  { this->m = m;  }
-
+    void setX(double x) { this->x = x; }
+    void setY(double y) { this->y = y; }
+    void setZ(double z) { this->z = z; }
+    void setVx(double vx) { this->vx = vx; }
+    void setVy(double vy) { this->vy = vy; }
+    void setVz(double vz) { this->vz = vz; }
+    void setQ(double q) { this->q = q; }
+    void setM(double m) { this->m = m; }
+    void deactivate()   { active = false;  }  // метод для деактивации частицы
+    
     // Метод для обновления координат и скорости частицы в соответствии с электрическим полем и временным шагом
     void update(double Ex, double Ey, double Ez, double dt) {
         // Вычисление ускорения частицы по закону Кулона
@@ -69,7 +74,7 @@ public:
     }
 
     // Метод для определения столкновения частицы с другой частицей или поверхностью
-    bool collide(Particle* other) {
+    bool collide(Particle*& other) {
         // Вычисление расстояния между частицами
         double dx = x - other->getX();
         double dy = y - other->getY();
@@ -81,8 +86,7 @@ public:
     }
 
     // Метод для изменения параметров частицы при столкновении с другой частицей или поверхностью
-    void bounce(Particle* other) {
-        // Здесь можно реализовать различные модели столкновений, например, упругие или неупругие.
+    void bounce(Particle*& other) {
         // Для простоты примера будем считать, что при столкновении частицы обмениваются скоростями и зарядами.
 
         // Сохранение старых параметров частиц
@@ -140,9 +144,12 @@ public:
 
 // Функция main для моделирования газового разряда
 int main() {
-    setlocale(LC_ALL, ".UTF8");
+    setlocale(LC_ALL, "Ru");
+
+    std::ofstream file("collisions.txt");
+
     // Задание параметров моделирования
-    int N = 150;            // количество частиц
+    int N = 1000;           // количество частиц
     double Ex = 1e4;        // напряженность электрического поля по оси x в вольтах на метр
     double Ey = 0;          // напряженность электрического поля по оси y в вольтах на метр
     double Ez = 0;          // напряженность электрического поля по оси z в вольтах на метр
@@ -163,6 +170,11 @@ int main() {
     double Snz = 1;         // компонента z нормального вектора к заданной поверхности
     double Sd = 1e-3;       // диаметр заданной поверхности в метрах (предполагаем, что она круглая)
     double Sp = 0;          // потенциал заданной поверхности в вольтах
+
+    if (N <= 0) {
+        std::cerr << "Ошибка: количество частиц должно быть больше нуля.\n";
+        return 1;
+    }
 
     // Создание массива для хранения частиц
     std::vector<Particle*> particles;
@@ -203,6 +215,8 @@ int main() {
         particles.push_back(p);
     }
 
+    int count_part{ 1 }; // счетчик частиц
+
     // Цикл для моделирования движения частиц в течение времени T с шагом dt
     for (double t = 0; t < T; t += dt) {
         // Цикл для обновления состояния каждой частицы
@@ -210,13 +224,19 @@ int main() {
             // Получение указателя на текущую частицу из массива
             Particle* p = particles[i];
 
+            // Пропуск неактивных частиц
+            if (!p->isActive()) continue;  
+
             // Обновление координат и скорости частицы в соответствии с электрическим полем и временным шагом
             p->update(Ex, Ey, Ez, dt);
 
             // Проверка условия пересечения траектории частицы с границей моделируемого объема или заданной поверхностью
-            if (p->cross(Lx, Ly, Lz, Sx, Sy, Sz, Snx, Sny, Snz,dt)) {
-                // Изменение параметров частицы при пересечении с границей или поверхностью
-                p->bounce(p); // Здесь можно реализовать различные модели отражения или поглощения частиц
+            if (p->cross(Lx, Ly, Lz, Sx, Sy, Sz, Snx, Sny, Snz, dt)) {
+                // Запись координат места пересечения в файл
+                file << count_part << " Частица прилипла к поверхности в точке (" << p->getX() << ", " << p->getY() << ", " << p->getZ() << ")\n";
+                count_part++;
+                // Деактивация частицы при прилипании к поверхности
+                p->deactivate();  
             }
 
             // Цикл для проверки столкновений текущей частицы с другими частицами
@@ -259,12 +279,13 @@ int main() {
 
     // Вывод результатов на экран
     std::cout << "Средняя скорость частиц: " << vavg << " м/с\n";
-    std::cout << "Средняя энергия частиц: " << eavg << " Дж\n";
+    std::cout << "Средняя энергия частиц: "  << eavg << " Дж\n";
 
     // Освобождение памяти, занятой частицами
     for (int i = 0; i < N; i++) {
         delete particles[i];
     }
 
+    file.close();
     return 0;
 }
